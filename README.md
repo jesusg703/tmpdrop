@@ -1,29 +1,33 @@
 # tmpdrop
 
-A self-hosted, temporary file sharing service. Upload a file, share the link,
-and it disappears when the timer runs out.
+A self-hosted, temporary file sharing service **with built-in format conversion**.
+Upload a file, share the link, convert it if you need to, and it disappears when
+the timer runs out.
 
 Written in Go with **only the standard library**. A single static binary, an
 embedded web UI, a JSON manifest for metadata and local disk for storage.
 
 ## Features
 
-- HTTP upload and download of files stored locally.
-- Per-file lifetime (default TTL) with automatic expiration and a background
-  sweeper.
+- 📤 Temporary file sharing — drag, drop, copy the link
+- 🔄 On-demand format conversion: audio, video, images, documents, e-books
+- ⏱️ Automatic expiration, per file
+- 🔢 Download limits and per-file passwords
+- 📦 Self-hosted in one `docker compose up`
+- 🔒 No account, no sign-up, no telemetry
+
+### Under the hood
+
 - Configurable limits: maximum file size, total storage, per-client quota and
   per-client file count.
-- Optional link expiry by download count (`max_downloads`); the file is deleted
-  as soon as the last allowed download is delivered.
 - Range requests, so a preview can seek and a cut download resumes. Ranged and
   `HEAD` requests never spend a download.
-- Minimalist dark web UI: drag-and-drop upload, a copy button for the share
-  link, in-browser preview, convert and delete.
-- Conversion to other formats through [ConvertX](https://github.com/C4illin/ConvertX),
-  included and working out of the box (the account is created automatically),
-  and hidden entirely when you turn it off.
+- Passwords are verified server-side with PBKDF2 and rate limited per client, so
+  the interface works the same over plain HTTP as it does behind TLS.
+- Uploads and conversions stream to disk: memory use does not track file size.
+- The manifest is written atomically, and a sweeper reclaims expired files and
+  orphaned blobs.
 - Logging, panic recovery, security headers and graceful shutdown.
-- Unit and integration tests; Makefile with `build`, `test` and `lint`.
 - No external assets: the page pulls nothing from the internet at runtime.
 - Containerised with a multi-stage Dockerfile; the image runs as an
   unprivileged user on a read-only root filesystem.
@@ -85,6 +89,36 @@ make run            # run with defaults on :8080
 
 No Go toolchain on the machine? The `-docker` variants run everything in a
 container: `make test-docker`, `make build-docker`, `make lint-docker`.
+
+## File conversion
+
+Every uploaded file gets a **Convert** button offering the formats that make
+sense for it. The converted file is stored as a new share link of its own, with
+the same lifetime and password as the original.
+
+| Input | Converted to |
+|---|---|
+| **Audio** — mp3, wav, aac, flac, ogg, opus, m4a, wma | mp3, wav, aac, flac, ogg, opus, m4a, and the mp4 / mkv / mov / webm / avi containers |
+| **Video** — mp4, webm, mkv, mov, avi, gif | mp4, webm, mkv, mov, avi, gif, plus every audio format above |
+| **Images** — png, jpg, webp, avif, tiff, bmp, heic | png, jpeg, webp, tiff, gif, jxl — and png also traces to svg |
+| **Vector** — svg | pdf, png |
+| **Documents** — doc, docx, odt, rtf, html, txt | pdf, docx, odt, rtf, txt, html, epub; docx and html add latex, org, rst and pptx |
+| **Markup** — md, rst, org, tex, latex | pdf, docx, odt, html, epub, latex, org, rst, pptx |
+| **Spreadsheets** — csv, tsv, xlsx, xls, ods | xlsx, ods, pdf, html, txt, docx, odt, rtf |
+| **E-books** — epub, mobi, azw3, fb2 | epub, mobi, azw3, fb2, pdf, txt; epub also reaches docx, odt, html, latex, org, rst and pptx |
+| **PDF** | docx, odt, rtf, txt, html, epub, png, svg |
+| **Code & data** — json, yaml, toml, xml, py, js, ts, go, rs, java, c, cpp, sql, sh | pdf, txt, html, odt, docx, rtf, epub |
+| **Contacts** — vcf | csv |
+
+The work is done by [ConvertX](https://github.com/C4illin/ConvertX), which the
+compose file runs alongside tmpdrop and pins to `v0.18.0`.
+
+> **This is deliberately less than ConvertX can do.** tmpdrop keeps a curated
+> table in [`internal/convertx/formats.go`](internal/convertx/formats.go) of the
+> conversions that were verified end to end against that pinned version, and the
+> menu only ever offers the ones that apply to the file you uploaded. Combinations
+> that upstream advertises but that fail in practice are excluded on purpose — the
+> reasoning for each is in [docs/NOTES.md](docs/NOTES.md).
 
 ## Configuration
 
@@ -224,9 +258,8 @@ curl -F "file=@report.pdf" -F "ttl=168h" -F "note=weekly report" \
 `POST /api/files/{id}/convert` with `{"target":"mp3"}` starts a conversion on
 the linked ConvertX instance. Poll `GET /api/convert/{id}`; when it returns
 `"status":"done"` a new file with its own share link has been stored under the
-same lifetime as the source. Supported targets are the common ones listed in
-`internal/convertx/formats.go` (audio/video, office, markup, images, e-books,
-contacts); extend that map to enable more.
+same lifetime as the source. Which targets are offered depends on the source
+format — see [File conversion](#file-conversion) for the table.
 
 ## Storage layout
 

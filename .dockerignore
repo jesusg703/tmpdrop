@@ -2,6 +2,7 @@ bin
 data
 .git
 *.md
+docs
 Makefile
 compose.yaml
 .env
