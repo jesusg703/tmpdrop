@@ -1,0 +1,20 @@
+{
+  "addr": ":8080",
+  "storage_dir": "./data",
+  "max_file_size": "100MB",
+  "max_storage": "1GB",
+  "default_ttl": "24h",
+  "sweep_interval": "1m",
+  "shutdown_timeout": "10s",
+  "quota_default": "250MB",
+  "max_files_per_client": 50,
+  "log_level": "info",
+  "source_url": "https://github.com/jesusg703/tmpdrop",
+  "trusted_proxies": [],
+  "convertx": {
+    "url": "",
+    "email": "",
+    "password": "",
+    "timeout": "5m"
+  }
+}

@@ -1,0 +1,17 @@
+# Build output
+/bin/
+
+# Runtime data: manifest and uploaded blobs
+/data/
+
+# Local config and secrets
+config.json
+.env
+
+# Test artefacts
+coverage.out
+*.test
+
+# Editor / OS noise
+.DS_Store
+*.swp

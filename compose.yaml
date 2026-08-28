@@ -1,0 +1,84 @@
+# Everything a fresh clone needs, in one command:
+#
+#   docker compose up -d
+#
+# That builds tmpdrop, starts ConvertX next to it and wires the two together —
+# format conversion works out of the box, with no variables to set.
+#
+# Two things to know before the first run:
+#
+#   * It downloads several GB. ConvertX bundles ffmpeg, LibreOffice and Calibre,
+#     which is what lets tmpdrop convert almost anything. Nothing else is that
+#     large; the tmpdrop image itself is a few MB.
+#
+#   * The port is published on every interface, and TMPDROP HAS NO LOGIN. Anyone
+#     who can reach it can list every file and delete any of them. That is the
+#     point on a network you trust, and a bad idea anywhere else — see the README.
+#     Set TMPDROP_BIND=127.0.0.1 in a .env file to keep it on this machine.
+#
+# ConvertX is an independent third-party project (AGPL-3.0) used over HTTP.
+
+name: tmpdrop
+
+services:
+  tmpdrop:
+    build:
+      context: .
+      args:
+        VERSION: "2.1.0"
+    image: tmpdrop:2.1.0
+    container_name: tmpdrop
+    restart: unless-stopped
+    depends_on:
+      - convertx
+    # The image already drops to an unprivileged user.
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    # Uploads and conversions stream to disk, so memory does not track file size.
+    mem_limit: 256m
+    cpus: '1.0'
+    ports:
+      - "${TMPDROP_BIND:-0.0.0.0}:8080:8080"
+    environment:
+      - TZ=${TZ:-UTC}
+      # Any setting accepts an environment variable with the same name as its
+      # config.json key; see the README. Share links are built from the request
+      # origin, so they work as-is behind a reverse proxy.
+      - CONVERTX_URL=${CONVERTX_URL:-http://convertx:3000}
+      # The ConvertX account is created automatically on first use. Override
+      # these if you also expose ConvertX itself.
+      - CONVERTX_EMAIL=${CONVERTX_EMAIL:-tmpdrop@example.com}
+      - CONVERTX_PASSWORD=${CONVERTX_PASSWORD:-tmpdrop-demo}
+    # A named volume on purpose: Docker copies the ownership from the image so
+    # the unprivileged UID can write without touching permissions.
+    volumes:
+      - data:/app/data
+
+  convertx:
+    image: ghcr.io/c4illin/convertx:v0.18.0
+    container_name: tmpdrop-convertx
+    restart: unless-stopped
+    # LibreOffice and ffmpeg will use everything you give them.
+    mem_limit: 2g
+    cpus: '2.0'
+    environment:
+      - TZ=${TZ:-UTC}
+      # A fixed secret keeps the session valid across restarts.
+      - JWT_SECRET=${JWT_SECRET:-change-me-before-deploying}
+      # Lets tmpdrop create its own account on first use.
+      - ACCOUNT_REGISTRATION=true
+      # Required: tmpdrop reaches it over plain HTTP on the internal network.
+      - HTTP_ALLOWED=true
+      - AUTO_DELETE_EVERY_N_HOURS=24
+      - MAX_CONVERT_PROCESS=1
+    # Not published: tmpdrop talks to it over the internal network. Uncomment to
+    # reach its own interface, and change the credentials above if you do.
+    # ports:
+    #   - "127.0.0.1:3000:3000"
+    volumes:
+      - convertx:/app/data
+
+volumes:
+  data:
+  convertx:
